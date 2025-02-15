@@ -1,0 +1,36 @@
+<!--/app/templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verbum6 Knowledge Landscape</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <!-- Add D3.js library -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <nav id="breadcrumb" class="breadcrumb">
+            <span>Root</span>
+        </nav>
+        <div id="visualization"></div>
+        <div id="document-panel" class="hidden">
+            <div class="document-toolbar">
+                <button id="close-doc" class="close-btn">&times;</button>
+                <h2 id="doc-title"></h2>
+            </div>
+            <div id="document-viewer"></div>
+            <div id="query-container" class="hidden">
+                <div class="document-query">
+                    <input type="text" id="doc-query" placeholder="Ask a question about this document...">
+                    <button id="query-submit">Ask</button>
+                </div>
+                <div id="query-response"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Use the correct path to your visualization JavaScript -->
+    <script src="{{ url_for('static', filename='js/visualizations.js') }}"></script>
+</body>
+</html>
