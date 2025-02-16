@@ -46,10 +46,15 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-inputDocs/
+InputDocs/    # Changed from inputDocs/ to match your actual folder name
 *.pdf
 logs/
 *.log
+GetIngest_Docs/    # Changed from Getingest_Docs to match actual name
+node_modules/    # In case you add any JavaScript dependencies
+temp/
+tmp/
+
 # Test coverage
 .coverage
 coverage.xml
@@ -59,3 +64,51 @@ htmlcov/
 # my local backups
 backup_working_20250214_065925
 backup_working_version_OLD
+
+# Backup directories (add these)
+*_backup_*/
+backup_*/
+app_backup_*/
+*.bak
+*.backup
+
+# Local development
+*.local
+.local/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Additional Python artifacts
+*.pyc
+__pycache__/
+.pytest_cache/
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+
+# Additional macOS files
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.*
+
+# Additional VS Code settings
+.history/
+*.code-workspace
+
+# Security (add these)
+*.pem
+*.key
+*.cert

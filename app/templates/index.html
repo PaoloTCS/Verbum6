@@ -8,6 +8,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <!-- Add D3.js library -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Add meta description -->
+    <meta name="description" content="Verbum6 Knowledge Landscape - Interactive document visualization and exploration">
+    
+    <!-- Add favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <!-- Add error handling for script loading -->
+    <script>
+        window.onerror = function(msg, url, line) {
+            console.error('JavaScript error:', msg, 'at', url, ':', line);
+        };
+    </script>
 </head>
 <body>
     <div class="container">

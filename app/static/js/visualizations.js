@@ -3,20 +3,47 @@
  * Handles the D3.js-based Voronoi tessellation visualization of document hierarchies.
  */
 
+class ErrorBoundary {
+    static handleError(error, component, method) {
+        console.error(`Error in ${component}.${method}:`, error);
+        // You could also send this to your error tracking service
+    }
+}
+
 class VoronoiMap {
-    constructor(containerId) {
-        this.container = d3.select(`#${containerId}`);
-        this.width = this.container.node().getBoundingClientRect().width;
-        this.height = 800;  // Match CSS height
-        this.padding = 60;  // Increased padding
-        this.currentPath = [];
-        this.currentData = null;
-        
-        this.svg = this.container.append('svg')
-            .attr('width', this.width)
-            .attr('height', this.height);
-        
-        this.initialize();
+    constructor(containerId, documentViewer) {
+        try {
+            // Add error handling for container
+            const container = document.getElementById(containerId);
+            if (!container) {
+                throw new Error(`Container #${containerId} not found`);
+            }
+            
+            this.container = d3.select(`#${containerId}`);
+            this.width = this.container.node().getBoundingClientRect().width;
+            this.height = 800;  // Match CSS height
+            this.padding = 60;  // Increased padding
+            this.currentPath = [];
+            this.currentData = null;
+            
+            this.svg = this.container.append('svg')
+                .attr('width', this.width)
+                .attr('height', this.height);
+            
+            // Add resize handler
+            window.addEventListener('resize', this.handleResize.bind(this));
+            
+            // Add loading state
+            this.isLoading = false;
+
+            this.documentViewer = documentViewer;  // Add reference to document viewer
+            this.handleCellClick = this.handleCellClick.bind(this);
+
+            this.initialize();
+        } catch (error) {
+            ErrorBoundary.handleError(error, 'VoronoiMap', 'constructor');
+            throw error;
+        }
     }
 
     async initialize() {
@@ -34,13 +61,29 @@ class VoronoiMap {
             this.currentData.hierarchy.distances = distances.distances;
             this.renderLevel(this.currentData.hierarchy);
         } catch (error) {
-            console.error('Failed to load data:', error);
+            ErrorBoundary.handleError(error, 'VoronoiMap', 'initialize');
+            this.showError('Failed to initialize visualization');
         }
     }
 
+    showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'visualization-error';
+        errorDiv.innerHTML = `
+            <div class="error-content">
+                <div class="error-icon">⚠️</div>
+                <div class="error-message">${message}</div>
+            </div>
+        `;
+        this.container.node().appendChild(errorDiv);
+    }
+
     generatePoints(data) {
-        const children = data.children || [];
-        if (children.length === 0) return [];
+        const children = data?.children || [];
+        if (!children.length) {
+            console.warn('No children in data');
+            return [];
+        }
 
         if (data.distances) {
             const points = this.positionWithForceLayout(children, data.distances);
@@ -109,80 +152,129 @@ class VoronoiMap {
     }
 
     renderLevel(data) {
-        const points = this.generatePoints(data);
-        if (points.length === 0) return;
+        try {
+            const points = this.generatePoints(data);
+            if (!points || points.length === 0) {
+                console.warn('No points to render');
+                return;
+            }
 
-        const delaunay = d3.Delaunay.from(points, d => d.x, d => d.y);
-        const voronoi = delaunay.voronoi([
-            this.padding, 
-            this.padding, 
-            this.width - this.padding, 
-            this.height - this.padding
-        ]);
+            // Create Voronoi generator
+            const delaunay = d3.Delaunay.from(points, d => d.x, d => d.y);
+            const voronoi = delaunay.voronoi([0, 0, this.width, this.height]);
 
-        // Clear previous content
-        this.svg.selectAll('*').remove();
+            // Clear previous content
+            this.svg.selectAll('*').remove();
 
-        // Draw cells
-        const cells = this.svg.append('g')
-            .selectAll('g')
-            .data(points)
-            .join('g');
+            // Create cells group
+            const cells = this.svg.selectAll('g')
+                .data(points)
+                .join('g')
+                .attr('class', 'node');
 
-        // Update cell styling
-        cells.append('path')
-            .attr('d', (_, i) => `M${voronoi.cellPolygon(i).join('L')}Z`)
-            .attr('class', d => `cell ${d.isMe ? 'me-node' : ''}`)
-            .attr('fill', (_, i) => d3.interpolateRainbow(i / points.length))
-            .attr('stroke', '#fff')
-            .attr('stroke-width', 2)
-            .style('cursor', 'pointer')
-            .style('opacity', d => d.isMe ? 0.9 : 0.7)  // More transparency
-            .on('click', (event, d) => this.handleCellClick(d));
+            // Add cell paths with click handler
+            cells.append('path')
+                .attr('d', (_, i) => {
+                    const polygon = voronoi.cellPolygon(i);
+                    return polygon ? `M${polygon.join('L')}Z` : '';
+                })
+                .attr('class', d => `cell ${d.isMe ? 'me-node' : ''}`)
+                .attr('fill', (_, i) => d3.interpolateRainbow(i / points.length))
+                .on('click', (event, d) => this.handleCellClick(d));
 
-        // Update labels
-        cells.append('text')
-            .attr('class', d => `label ${d.isMe ? 'me-label' : ''}`)
-            .attr('x', d => d.x)
-            .attr('y', d => d.y)
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .attr('fill', 'white')
-            .style('pointer-events', 'none')
-            .text(d => d.name);
+            // Add labels
+            cells.append('text')
+                .attr('class', d => `label ${d.isMe ? 'me-label' : ''}`)
+                .attr('x', d => d.x)
+                .attr('y', d => d.y)
+                .attr('dy', '0.35em')
+                .text(d => d.name);
 
-        this.updateBreadcrumb();
+            // Update breadcrumb
+            this.updateBreadcrumb();
+        } catch (error) {
+            ErrorBoundary.handleError(error, 'VoronoiMap', 'renderLevel');
+        }
     }
 
-    handleCellClick(d) {
-        if (d.type === 'folder') {
-            this.currentPath.push(d.name);
-            this.renderLevel({ children: d.children });
-        } else if (d.type === 'document') {
-            // Pass the document to the viewer instead of just the path
-            documentViewer.show({
-                name: d.name,
-                path: d.path,
-                type: d.type
-            });
+    async handleCellClick(data) {
+        try {
+            if (!data || !data.name) {
+                console.warn('Invalid cell data');
+                return;
+            }
+
+            console.log('Cell clicked:', data.name);
+
+            if (data.type === 'document') {
+                try {
+                    if (data.name.toLowerCase().endsWith('.pdf')) {
+                        // For PDFs, open in document viewer
+                        this.documentViewer.show({
+                            name: data.name,
+                            path: data.path,
+                            type: 'pdf'
+                        });
+                    } else {
+                        // For other documents, fetch content
+                        const response = await fetch(`/api/document/${encodeURIComponent(data.path)}`);
+                        if (!response.ok) throw new Error(`Failed to fetch document: ${response.statusText}`);
+                        const documentData = await response.json();
+                        this.documentViewer.show({
+                            ...documentData,
+                            path: data.path,
+                            type: 'text'
+                        });
+                    }
+                    return;
+                } catch (error) {
+                    console.error('Document error:', error);
+                    this.showError(`Failed to load document: ${error.message}`);
+                    return;
+                }
+            }
+
+            // Handle directory navigation
+            const newPath = [...this.currentPath, data.name];
+            console.log('Navigating to:', newPath.join('/'));
+            
+            const response = await fetch(`/api/hierarchy/${newPath.join('/')}`);
+            if (!response.ok) throw new Error(`Server returned ${response.status}`);
+            
+            const newData = await response.json();
+            if (!newData.hierarchy) {
+                throw new Error('Invalid hierarchy data received');
+            }
+
+            this.currentPath = newPath;
+            this.currentData = newData;
+            this.renderLevel(newData.hierarchy);
+
+        } catch (error) {
+            ErrorBoundary.handleError(error, 'VoronoiMap', 'handleCellClick');
+            this.showError(`Failed to process click on ${data.name}`);
         }
     }
 
     updateBreadcrumb() {
-        const breadcrumb = d3.select('#breadcrumb');
-        breadcrumb.html('');
-        
-        breadcrumb.append('span')
-            .text('Root')
-            .style('cursor', 'pointer')
-            .on('click', () => this.navigateToRoot());
+        const breadcrumb = document.getElementById('breadcrumb');
+        if (!breadcrumb) return;
 
-        this.currentPath.forEach((path, i) => {
-            breadcrumb.append('span').text(' > ');
-            breadcrumb.append('span')
-                .text(path)
-                .style('cursor', 'pointer')
-                .on('click', () => this.navigateToLevel(i));
+        const pathElements = ['Root', ...this.currentPath];
+        breadcrumb.innerHTML = pathElements
+            .map((elem, index) => `
+                <span data-index="${index}" class="breadcrumb-item">
+                    ${elem}${index < pathElements.length - 1 ? ' >' : ''}
+                </span>
+            `)
+            .join(' ');
+
+        // Add click handlers to breadcrumb items
+        breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const index = parseInt(item.dataset.index);
+                this.navigateToLevel(index);
+            });
         });
     }
 
@@ -192,20 +284,39 @@ class VoronoiMap {
     }
 
     navigateToLevel(level) {
+        console.log(`Navigating to level: ${level}`);
+        console.log('Current path:', this.currentPath);
+        
         this.currentPath = this.currentPath.slice(0, level + 1);
         let currentNode = this.currentData.hierarchy;
         
         for (const pathSegment of this.currentPath) {
+            console.log(`Looking for segment: ${pathSegment}`);
             currentNode = currentNode.children.find(c => c.name === pathSegment);
+            if (!currentNode) {
+                console.error(`Failed to find node for segment: ${pathSegment}`);
+                return;
+            }
         }
         
+        console.log('Found node:', currentNode);
         this.renderLevel(currentNode);
+    }
+
+    handleResize() {
+        // Debounce resize events
+        clearTimeout(this.resizeTimer);
+        this.resizeTimer = setTimeout(() => {
+            this.width = this.container.node().getBoundingClientRect().width;
+            this.renderLevel(this.currentData.hierarchy);
+        }, 250);
     }
 }
 
 // Initialize the visualization
 document.addEventListener('DOMContentLoaded', () => {
-    const voronoiMap = new VoronoiMap('visualization');
+    const documentViewer = new DocumentViewer();
+    const voronoiMap = new VoronoiMap('visualization', documentViewer);
 });
 
 class DocumentViewer {
@@ -220,6 +331,14 @@ class DocumentViewer {
         this.currentDocument = null;
         
         this.setupEventListeners();
+        this.marked = marked;
+        this.marked.setOptions({
+            gfm: true,
+            breaks: true,
+            highlight: function(code) {
+                return hljs.highlightAuto(code).value;
+            }
+        });
     }
 
     setupEventListeners() {
@@ -228,17 +347,13 @@ class DocumentViewer {
     }
 
     async handleQuery() {
-        const query = this.queryInput.value.trim();
-        if (!query || !this.currentDocument) return;
-
         try {
-            this.responseDiv.textContent = 'Processing query...';
+            this.showLoadingState();
+            const query = this.queryInput.value.trim();
             
             const response = await fetch('/api/document/query', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     path: this.currentDocument.path,
                     query: query
@@ -246,23 +361,97 @@ class DocumentViewer {
             });
 
             const data = await response.json();
-            if (data.error) {
-                this.responseDiv.textContent = `Error: ${data.error}`;
-            } else {
-                this.responseDiv.textContent = data.response;
-            }
             
+            if (data.error) {
+                this.showError(`
+### Error Processing Query
+
+${data.error}
+
+${data.suggestion ? `**Suggestion:** ${data.suggestion}` : ''}
+
+*Try breaking your question into smaller, more specific parts.*
+                `);
+            } else {
+                this.displayResponse(data);
+            }
         } catch (error) {
-            console.error('Error processing query:', error);
-            this.responseDiv.textContent = 'Error processing query';
+            this.showError('Network or processing error occurred');
+        } finally {
+            this.hideLoadingState();
         }
+    }
+
+    displayResponse(data) {
+        try {
+            const container = document.createElement('div');
+            container.className = 'query-response-container';
+
+            // Add metadata header with null checks
+            const metadata = document.createElement('div');
+            metadata.className = 'response-metadata';
+            const chaptersProcessed = data.chapters_processed || [];
+            metadata.innerHTML = `
+                <div class="metadata-header">
+                    <span class="document-name">${data.source_document || 'Unknown document'}</span>
+                    <span class="chapter-count">${chaptersProcessed.length} chapters analyzed</span>
+                </div>
+                <div class="chapters-list">
+                    ${chaptersProcessed.length > 0 
+                      ? `Chapters: ${chaptersProcessed.join(', ')}`
+                      : 'No chapters processed'}
+                </div>
+            `;
+            container.appendChild(metadata);
+
+            // Add main response with Markdown rendering
+            const response = document.createElement('div');
+            response.className = 'response-content';
+            response.innerHTML = this.marked.parse(data.answer || 'No response available');
+            container.appendChild(response);
+
+            this.responseDiv.innerHTML = '';
+            this.responseDiv.appendChild(container);
+        } catch (error) {
+            ErrorBoundary.handleError(error, 'DocumentViewer', 'displayResponse');
+            this.showError('Error displaying response');
+        }
+    }
+
+    showLoadingState() {
+        if (this.responseDiv) {
+            this.responseDiv.innerHTML = `
+                <div class="loading-indicator">
+                    <div class="spinner"></div>
+                    <div>Processing query across chapters...</div>
+                </div>
+            `;
+        }
+    }
+
+    hideLoadingState() {
+        if (this.responseDiv) {
+            const loadingIndicator = this.responseDiv.querySelector('.loading-indicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+        }
+    }
+
+    showError(message) {
+        this.responseDiv.innerHTML = `
+            <div class="error-message">
+                <div class="error-icon">⚠️</div>
+                <div>${message}</div>
+            </div>
+        `;
     }
 
     show(document) {
         this.currentDocument = document;
         this.title.textContent = document.name;
         this.panel.classList.add('visible');
-        this.loadDocument(document.path);
+        this.loadDocument(document);
         
         // Show query interface only for PDF documents
         if (document.name.toLowerCase().endsWith('.pdf')) {
@@ -281,39 +470,95 @@ class DocumentViewer {
         this.queryContainer.classList.add('hidden');
     }
 
-    async loadDocument(path) {
+    async loadDocument(document) {
         try {
-            const response = await fetch(`/api/document/${path}`);
-            if (path.toLowerCase().endsWith('.pdf')) {
-                // Handle PDF documents
-                const blob = await response.blob();
-                const objectUrl = URL.createObjectURL(blob);
+            if (document.type === 'pdf') {
+                // Load PDF directly in iframe
+                const docPath = `/api/document/${encodeURIComponent(document.path)}`;
                 this.viewer.innerHTML = `
                     <iframe 
-                        src="${objectUrl}" 
+                        src="${docPath}" 
                         width="100%" 
                         height="100%" 
                         style="border: none; min-height: 80vh;">
                     </iframe>`;
             } else {
-                // Handle text documents
+                // Display text content
+                const response = await fetch(`/api/document/${encodeURIComponent(document.path)}`);
+                if (!response.ok) throw new Error('Failed to load document');
                 const data = await response.json();
                 this.viewer.innerHTML = `<pre>${data.content}</pre>`;
             }
         } catch (error) {
             console.error('Error loading document:', error);
-            this.viewer.innerHTML = '<p class="error">Error loading document</p>';
+            this.viewer.innerHTML = `
+                <div class="error-message">
+                    Failed to load document: ${error.message}
+                </div>`;
         }
     }
-}
 
-// Initialize document viewer
-const documentViewer = new DocumentViewer();
+    async submitQuery(query) {
+        try {
+            if (!this.currentDocument || !query.trim()) {
+                this.showError('No document loaded or empty query');
+                return;
+            }
 
-// Update your cell click handler
-function handleCellClick(d) {
-    if (d.type === 'document') {
-        documentViewer.show(d);
+            this.showLoading();
+            
+            const response = await fetch('/api/document/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    path: this.currentDocument.path,
+                    query: query.trim()
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.error) {
+                throw new Error(result.error || result.details || 'Failed to process query');
+            }
+
+            this.displayResponse(result);
+
+        } catch (error) {
+            console.error('Query error:', error);
+            this.showError(`Query processing failed: ${error.message}`);
+        } finally {
+            this.hideLoading();
+        }
     }
-    // ... existing navigation logic ...
+
+    displayResponse(data) {
+        this.responseDiv.innerHTML = `
+            <div class="query-response">
+                <p class="answer">${data.answer}</p>
+                <p class="metadata">
+                    Source: ${data.source_document}<br>
+                    Pages processed: ${data.pages_processed}
+                </p>
+            </div>
+        `;
+    }
+
+    showLoading() {
+        this.responseDiv.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Processing query...</p>
+            </div>
+        `;
+    }
+
+    hideLoading() {
+        const loadingElement = this.responseDiv.querySelector('.loading');
+        if (loadingElement) {
+            loadingElement.remove();
+        }
+    }
 }
