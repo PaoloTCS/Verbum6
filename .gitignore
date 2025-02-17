@@ -112,3 +112,21 @@ Icon
 *.pem
 *.key
 *.cert
+
+# Development environment
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+
+# Project specific directories
+InputDocs/
+GetIngest_Docs/
+backup_*/
+*_backup_*/
+
+# Logs and temporary files
+*.log
+temp/
+tmp/
